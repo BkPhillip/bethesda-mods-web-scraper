@@ -1,4 +1,4 @@
-# bethesda-mods-web-scraper
+# Bethesda.net Mod Web Scraper
 Scrapes mods.bethesda.net for data on available mods for either Fallout 4 or Skyrim.
 
 Some category options are only available for Fallout 4. (Automatron, Companions, Contraptions Workshop, Far Harbor, Nuka World, Power Armor,
