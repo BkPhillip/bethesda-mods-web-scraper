@@ -4,74 +4,23 @@ by Bryson Phillip
 11/22/22
 
 """
-# todo: Move app class to other file and import
-# todo: change number of ratings from k's to 1000's
-# todo: categories option from option box, "category=<category>&" inserted before "number_
-
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from time import sleep
 import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog as fd
-import pandas as pd
+from bethesda_net_scraper import BethesdaNetScraper
+from dotenv import load_dotenv
+import os
 
-CHROME_DRIVER_PATH = "/Users/BrysonPhillip/Development/chromedriver"
-
-
-class FalloutXboxModsScraper:
-    def __init__(self, driver_path):
-        self.driver = webdriver.Chrome(executable_path=driver_path)
-        self.url = "https://mods.bethesda.net/en/?number_results=&order=&page=1&platform=&product=&sort=&text="
-
-    def get_new_mods(self, save_path,  quantity, order, console, game, sort, period,  search_term):
-        search_options = {"results=": quantity,
-                          "order=": order,
-                          "platform=": console,
-                          "product=": game,  # Need to change url at .net/en/<game_name> rather than at product=
-                          "sort=": sort,
-                          "text=": search_term}
-
-        for option in search_options:
-            if option == "product=":
-                url_index1 = self.url.index("/en/") + len("/en/")
-                url_index2 = self.url.index(option) + len(option)  # get index after last character of string in URL
-                self.url = self.url[:url_index1] + search_options[option] + self.url[url_index1:]
-                self.url = self.url[:url_index2] + search_options[option] + self.url[url_index2:]
-            elif option == "sort=" and period != "all time" and search_options[option] != "Date":
-                url_index = self.url.index(option) + len(option)  # get index after last character of string in URL
-                self.url = self.url[:url_index] + search_options[option] + f"-{period}" + self.url[url_index:]
-            else:
-                url_index = self.url.index(option) + len(option)  # get index after last character of string in URL
-                self.url = self.url[:url_index] + search_options[option] + self.url[url_index:]
-
-        self.driver.get(self.url)
-
-        sleep(7)  # Time for javascript to load
-
-        mod_titles = [title.text for title in self.driver.find_elements(By.CSS_SELECTOR, "div.card-name p")]
-        mod_authors = [author.text for author in self.driver.find_elements(By.CSS_SELECTOR, "div.card-user p")]
-        mod_ratings = [float(rating.get_attribute('rating')) for rating in
-                       self.driver.find_elements(By.CSS_SELECTOR, "div.card-rating")]
-        mod_review_counts = [review_count.text[1:-1] for review_count in
-                             self.driver.find_elements(By.CSS_SELECTOR, "div.card-rating span.rating-average-number")]
-        mod_links = [link.get_attribute("href") for link in
-                     self.driver.find_elements(By.CSS_SELECTOR, "div.content-module > a")]
-        data = {"Name": mod_titles,
-                "Author": mod_authors,
-                "Rating": mod_ratings,
-                "Review Count": mod_review_counts,
-                "Link": mod_links}
-        df = pd.DataFrame.from_dict(data)
-        df.to_csv(save_path)
-
-        self.driver.quit()
+load_dotenv()
+CHROME_DRIVER_PATH = os.environ['CHROME_DRIVER_PATH']
 
 
 class Window:
     def __init__(self, master):
-        frame = tk.Frame(master, width=200, height=200)
+        frame = tk.Frame(master, width=200, height=80)
         # Results Quantity
+        results_label = tk.Label(master, text="Results:")
+        results_label.pack()
         self.results = tk.IntVar()
         self.results.set(20)
         results_spinbox = tk.Spinbox(master, from_=1, to=1000, increment=1, textvariable=self.results)
@@ -94,6 +43,8 @@ class Window:
         skyrim_radio = tk.Radiobutton(master, text="Skyrim", variable=self.game, value="skyrim")
         skyrim_radio.pack()
         # Sorting Options (date added, most popular, highest rated, most favorited)
+        sort_label = tk.Label(master, text="Sort:")
+        sort_label.pack()
         sort_list = ["Date", "Most Popular", "Highest Rated", "Most Favorited"]
         self.sort_combobox = ttk.Combobox(master, values=sort_list)
         self.sort_combobox.current(0)
@@ -108,21 +59,43 @@ class Window:
         search_label.pack()
         self.search_entry = tk.Entry(master, width=20)
         self.search_entry.pack()
+        # Categories (select as many as desired)
+        cat_label = tk.Label(master, text="Categories:")
+        cat_label.pack()
+        categories = ["Animals", "Armor", "Audio", "Automatron", "Buildings", "Characters", "Cheats", "Clothing",
+                      "Collectibles", "Companions", "Contraptions Workshop", "Crafting", "Creatures", "Environmental",
+                      "Far Harbor", "Foliage", "Followers", "Gameplay", "Graphics", "Hair and Face", "Homes",
+                      "Immersion", "Items and Objects - Player", "Items and Object - World", "Landscape", "Misc",
+                      "Modder Resources/Tutorials", "Models and Textures", "NPCs", "Nuka-World", "Nvidia", "Overhaul",
+                      "Patches", "Perks", "Power Armor", "Quests", "Races", "Radio", "Settlements",
+                      "Skills and Leveling", "Towns", "UI", "Utilities", "Vault-Tec Workshop", "Wasteland Workshop",
+                      "Weapons", "Work-In-Progress", "Workshop", "Worlds"]
+        var = tk.Variable(value=categories)
+        self.categories_listbox = tk.Listbox(master,
+                                             listvariable=var,
+                                             height=24,
+                                             selectmode="multiple",
+                                             )
+        self.categories_listbox.pack(pady=10)
         # Button to  get results and run bot
         button = tk.Button(master, text="Find Mods", command=self.create_csv)
         button.pack()
-
+        # Bindings
         self.sort_combobox.bind('<<ComboboxSelected>>', self.change_sort)
-        frame.pack(padx=10, pady=10, expand=True, fill=tk.BOTH)
+        # Put frame in window
+        frame.pack(padx=30, pady=30, expand=True, fill=tk.BOTH)
 
+    # This function opens the file dialog window, gets the widget values, and calls the web scraping bot
     def create_csv(self):
+        # File Dialog window
         save_path = fd.asksaveasfile(mode="w", initialfile="mod-data.csv", defaultextension=".csv")
-        # Get  widget values to make url search
+
+        # Get widget values to make url search
         results = str(self.results.get())  # Get desired results quantity
         order = self.order.get()  # Ascending or Descending
         platform = self.platform_combobox.get()  # get console name
         game = self.game.get()  # Fallout 4 or Skyrim
-        match self.sort_combobox.current():  # Get sort choice from list
+        match self.sort_combobox.current():  # Get sort choice from list, display text differs from url text
             case 0:
                 sort = "published"
             case 1:
@@ -131,12 +104,18 @@ class Window:
                 sort = "rating"
             case 3:
                 sort = "follow"
+            case _:
+                sort = "published"
         period = self.period_combobox.get()  # Get period choice from list
         search_term = self.search_entry.get()  # Get Search Term
+        # Get categories selection as list
+        selected_categories = [self.categories_listbox.get(i) for i in self.categories_listbox.curselection()]
 
-        bot = FalloutXboxModsScraper(CHROME_DRIVER_PATH)
-        bot.get_new_mods(save_path, results, order, platform, game, sort, period, search_term)
+        # Initiate Web Scraping Bot
+        bot = BethesdaNetScraper(CHROME_DRIVER_PATH)
+        bot.get_new_mods(save_path, results, order, platform, game, sort, period, search_term, selected_categories)
 
+    # This function disables the time period option if the "Date" sorting method is selected.
     def change_sort(self, event):
         if self.sort_combobox.get() == "Date":
             self.period_combobox.config(state='disabled')
@@ -145,7 +124,6 @@ class Window:
 
 
 root = tk.Tk()
-root.title("Bethesda Mods Web Scraper")
-
+root.title("Bethesda.net Web Scraper")
 window = Window(root)
 root.mainloop()
